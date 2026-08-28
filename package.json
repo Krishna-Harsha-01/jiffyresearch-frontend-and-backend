@@ -1,0 +1,30 @@
+{
+  "name": "nexus-research-ai",
+  "version": "1.0.0",
+  "description": "NexusResearch AI — AI-Powered Research & Knowledge Discovery Platform",
+  "main": "backend/src/server.js",
+  "scripts": {
+    "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm run build:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  },
+  "keywords": [
+    "ai",
+    "research",
+    "knowledge-discovery",
+    "gemini-api",
+    "express",
+    "react",
+    "vite",
+    "tailwind"
+  ],
+  "author": "Hackathon Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

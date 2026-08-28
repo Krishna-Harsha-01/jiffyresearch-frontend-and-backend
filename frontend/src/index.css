@@ -1,0 +1,235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 17px;
+  }
+
+  html.dark, html.dark body {
+    @apply bg-[#050505] text-white min-h-screen antialiased selection:bg-[#d2f235] selection:text-black;
+    background-color: #050505;
+    color: #ffffff;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  html.light, html.light body {
+    @apply bg-[#f4f4f5] text-zinc-900 min-h-screen antialiased selection:bg-[#d2f235] selection:text-black;
+    background-color: #f4f4f5;
+    color: #09090b;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+}
+
+
+
+/* Prevent auto-zoom on focus for iOS & mobile browsers */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+* {
+  touch-action: manipulation;
+}
+
+/* Recraft Studio Primary Button (Electric Lime) */
+.btn-recraft-lime {
+  background-color: #d2f235;
+  color: #050505;
+  font-weight: 800;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-recraft-lime:hover {
+  background-color: #c4e625;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px -5px rgba(210, 242, 53, 0.4);
+}
+
+/* Recraft Studio Secondary Button (White / Dark Pill) */
+.btn-recraft-secondary {
+  background-color: #ffffff;
+  color: #050505;
+  font-weight: 800;
+  border: 1px solid #e4e4e7;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-recraft-secondary:hover {
+  background-color: #f4f4f5;
+  transform: translateY(-1px);
+}
+
+.dark .btn-recraft-secondary {
+  background-color: #18181b;
+  color: #ffffff;
+  border-color: #27272a;
+}
+
+.dark .btn-recraft-secondary:hover {
+  background-color: #27272a;
+}
+
+
+
+/* Recraft Studio Glass Panels & Cards */
+.dark .glass-panel {
+  background: #09090b;
+  border: 1px solid #27272a;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8);
+}
+
+.light .glass-panel {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.08);
+}
+
+.dark .glass-card {
+  background: #121215;
+  border: 1px solid #27272a;
+  transition: all 0.25s ease-in-out;
+}
+
+.light .glass-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s ease-in-out;
+}
+
+.dark .glass-card:hover {
+  background: #18181b;
+  border-color: #d2f235;
+  transform: translateY(-2px);
+}
+
+.light .glass-card:hover {
+  background: #ffffff;
+  border-color: #18181b;
+  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.dark .glass-input {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #ffffff;
+}
+
+.light .glass-input {
+  background: #ffffff;
+  border: 1px solid #d4d4d8;
+  color: #09090b;
+}
+
+.glass-input:focus {
+  border-color: #d2f235;
+  outline: none;
+}
+
+/* Text Highlights */
+.text-gradient-lime {
+  color: #d2f235;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+.light ::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 9999px;
+}
+
+/* Salford & Co. Presentation Template Body Styles */
+.salford-template-body {
+  color: #2b040d !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.salford-template-body h1, 
+.salford-template-body h2, 
+.salford-template-body h3, 
+.salford-template-body h4 {
+  color: #2b040d !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #f3e6e8;
+  padding-bottom: 0.35rem;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.salford-template-body p {
+  color: #3b0914 !important;
+  margin-bottom: 0.75rem;
+  line-height: 1.65;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.salford-template-body ul {
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.salford-template-body li {
+  background-color: #fcf5f6;
+  border: 1px solid #f0d5d9;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.85rem;
+  color: #3b0914 !important;
+  font-weight: 700;
+  list-style-type: none;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.salford-template-body blockquote {
+  border-left: 4px solid #3b0914;
+  background-color: #fcf5f6;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  color: #4a0d1a !important;
+  font-style: italic;
+}
+
