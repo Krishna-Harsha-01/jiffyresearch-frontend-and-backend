@@ -12,8 +12,21 @@ const {
 
 const {
   validateEmailDeliverability,
+  sendVerificationEmail,
   sendPasswordResetEmail
 } = require('../services/email.service');
+
+const PRIMARY_ADMIN_EMAIL = 'jiffyresearchnxt@gmail.com';
+
+const normalizeIsoDate = (dateVal) => {
+  if (!dateVal) return new Date().toISOString();
+  if (typeof dateVal === 'string') {
+    if (dateVal.includes('T')) return dateVal;
+    if (dateVal.includes(' ')) return new Date(dateVal.replace(' ', 'T') + 'Z').toISOString();
+  }
+  const d = new Date(dateVal);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+};
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -27,7 +40,7 @@ const register = async (req, res) => {
     const { name, email, password } = req.body;
     const normalizedEmail = email.trim().toLowerCase();
 
-    // 1. STRICT EMAIL DELIVERABILITY & DOMAIN VERIFICATION (Block fake/disposable domains)
+    // 1. Validate email format
     const emailValidation = await validateEmailDeliverability(normalizedEmail);
     if (!emailValidation.valid) {
       await logSecurityEvent(null, normalizedEmail, 'REGISTER_INVALID_EMAIL_DOMAIN', req, 'FAILED', emailValidation.reason);
@@ -38,7 +51,7 @@ const register = async (req, res) => {
     }
 
     // 2. Check existing user
-    const existingUser = await dbGet('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [normalizedEmail]);
+    const existingUser = await dbGet('SELECT * FROM users WHERE LOWER(email) = LOWER(?)', [normalizedEmail]);
     if (existingUser) {
       await logSecurityEvent(null, normalizedEmail, 'REGISTER_DUPLICATE_ATTEMPT', req, 'WARNING', 'Attempted duplicate signup');
       return res.status(400).json({
@@ -50,11 +63,10 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    // First registered user becomes Admin, subsequent users become Researchers
-    const userCountRow = await dbGet('SELECT COUNT(*) as count FROM users');
-    const role = (userCountRow && userCountRow.count === 0) ? 'admin' : 'researcher';
+    // Only jiffyresearchnxt@gmail.com can ever receive admin role; all other users receive researcher
+    const role = (normalizedEmail === PRIMARY_ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'researcher';
 
-    // Account created as verified automatically (No email verification step required)
+    // Account created as verified automatically
     const result = await dbRun(
       `INSERT INTO users (name, email, password_hash, role, is_verified)
        VALUES (?, ?, ?, ?, 1)`,
@@ -80,6 +92,7 @@ const register = async (req, res) => {
     await logSecurityEvent(userId, normalizedEmail, 'USER_REGISTERED', req, 'SUCCESS', `User registered with role: ${role}`);
 
     const newUser = await dbGet('SELECT id, name, email, role, is_verified, created_at FROM users WHERE id = ?', [userId]);
+    const stableCreatedAt = normalizeIsoDate(newUser.created_at);
 
     return res.status(201).json({
       success: true,
@@ -91,12 +104,132 @@ const register = async (req, res) => {
         email: newUser.email,
         role: newUser.role,
         isVerified: true,
-        createdAt: newUser.created_at
+        createdAt: stableCreatedAt,
+        created_at: stableCreatedAt
       }
     });
   } catch (error) {
     console.error('Register error:', error);
     return res.status(500).json({ success: false, error: 'Registration failed due to a server error.' });
+  }
+};
+
+const verifyEmail = async (req, res) => {
+  return res.json({ success: true, message: 'Account is verified.' });
+};
+
+const checkEmailExists = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required.' });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await dbGet('SELECT id, email FROM users WHERE LOWER(email) = LOWER(?)', [normalizedEmail]);
+    return res.json({
+      success: true,
+      exists: Boolean(user),
+      message: Boolean(user) ? 'The account with this mail already exists. Please sign in instead.' : 'Email is available.'
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Failed to verify email availability.' });
+  }
+};
+
+const resendVerification = async (req, res) => {
+  return res.json({ success: true, message: 'Account is verified.' });
+};
+
+const googleAuth = async (req, res) => {
+  try {
+    const { email, name, googleId, avatar } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Google account email is required.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check if email format/domain is valid
+    const emailValidation = await validateEmailDeliverability(normalizedEmail);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ success: false, error: 'wrong mail' });
+    }
+
+    let user = await dbGet('SELECT * FROM users WHERE LOWER(email) = LOWER(?)', [normalizedEmail]);
+
+    // Check if another session is actively using this Google account
+    if (user && user.is_session_active === 1 && user.active_session_id) {
+      const isRecentlyActive = user.last_active_at && (Date.now() - new Date(user.last_active_at).getTime() < 30 * 60 * 1000);
+      if (isRecentlyActive) {
+        await logSecurityEvent(user.id, normalizedEmail, 'CONCURRENT_LOGIN_BLOCKED', req, 'DENIED', 'Concurrent login blocked - account has active session');
+        return res.status(403).json({
+          success: false,
+          error: 'This Google account is currently signed in and active on another device. Simultaneous logins with the same account are restricted for security. Please sign out from that device first.'
+        });
+      }
+    }
+
+    const sessionId = 'SES_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
+
+    if (!user) {
+      // Create new user account via Google OAuth
+      const role = (normalizedEmail === PRIMARY_ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'researcher';
+      const salt = await bcrypt.genSalt(10);
+      const password_hash = await bcrypt.hash('GoogleOAuth_Passwordless_' + Date.now(), salt);
+
+      const result = await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, is_verified, is_session_active, active_session_id, last_active_at, auth_provider, google_id, avatar_url)
+         VALUES (?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, 'google', ?, ?)`,
+        [name ? name.trim() : normalizedEmail.split('@')[0], normalizedEmail, password_hash, role, sessionId, googleId || null, avatar || null]
+      );
+
+      const userId = result.id;
+
+      // Create default research workspace
+      await dbRun(
+        'INSERT INTO workspaces (user_id, name, description, domain) VALUES (?, ?, ?, ?)',
+        [userId, 'My First Research Project', 'Default AI-powered research workspace for synthesizing insights', 'General Research']
+      );
+
+      user = await dbGet('SELECT id, name, email, role, is_verified, avatar_url, created_at FROM users WHERE id = ?', [userId]);
+      await logSecurityEvent(userId, normalizedEmail, 'GOOGLE_USER_REGISTERED', req, 'SUCCESS', `Account created via 1-Click Google OAuth (Role: ${role})`);
+    } else {
+      // Set account active with new unique session ID
+      await dbRun(
+        'UPDATE users SET is_verified = 1, is_session_active = 1, active_session_id = ?, last_active_at = CURRENT_TIMESTAMP, google_id = COALESCE(?, google_id), avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
+        [sessionId, googleId || null, avatar || null, user.id]
+      );
+      await logSecurityEvent(user.id, normalizedEmail, 'GOOGLE_USER_LOGIN', req, 'SUCCESS', 'User authenticated via 1-Click Google OAuth');
+    }
+
+    // Generate persistent session token embedding unique sessionId
+    const token = jwt.sign(
+      { userId: user.id, sessionId, name: user.name, email: normalizedEmail, role: user.role, token_version: user.token_version || 1 },
+      process.env.JWT_SECRET || 'nexus_research_super_secret_jwt_key_2026_hackathon',
+      { expiresIn: '365d' }
+    );
+
+    const stableCreatedAt = normalizeIsoDate(user.created_at);
+
+    res.cookie('nexus_token', token, COOKIE_OPTIONS);
+
+    return res.json({
+      success: true,
+      message: 'Authenticated with Google successfully.',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: true,
+        avatarUrl: user.avatar_url,
+        createdAt: stableCreatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Google Auth Error:', error);
+    return res.status(500).json({ success: false, error: 'Authentication failed. Please try again.' });
   }
 };
 
@@ -107,88 +240,19 @@ const login = async (req, res) => {
 
     const user = await dbGet('SELECT * FROM users WHERE LOWER(email) = LOWER(?)', [normalizedEmail]);
 
+    // If user is not present in database (not registered via Google Sign Up), reject with "wrong mail"
     if (!user) {
-      await bcrypt.compare(password, '$2a$10$abcdefghijklmnopqrstuuwxyz01234567890123456789012');
-      await logSecurityEvent(null, normalizedEmail, 'LOGIN_FAILED', req, 'FAILED', 'Invalid user credentials');
-      return res.status(401).json({ success: false, error: 'Invalid credentials.' });
-    }
-
-    // Check Account Lockout
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      const remainingMinutes = Math.ceil((new Date(user.locked_until) - new Date()) / (60 * 1000));
-      await logSecurityEvent(user.id, normalizedEmail, 'LOGIN_BLOCKED_LOCKED', req, 'WARNING', `Attempt on locked account. ${remainingMinutes}m remaining`);
-      return res.status(423).json({
-        success: false,
-        error: `Account is temporarily locked due to multiple failed login attempts. Please try again in ${remainingMinutes} minute(s).`
-      });
-    }
-
-    // Check CAPTCHA requirement
-    if (user.failed_login_attempts >= 3) {
-      if (!captchaToken || !captchaAnswer) {
-        const captcha = await generateCaptcha();
-        return res.status(400).json({
-          success: false,
-          error: 'Security CAPTCHA verification required due to recent failed login attempts.',
-          requiresCaptcha: true,
-          captchaToken: captcha.token,
-          captchaSvg: captcha.captchaSvg
-        });
-      }
-
-      const isCaptchaValid = await verifyCaptcha(captchaToken, captchaAnswer);
-      if (!isCaptchaValid) {
-        const updatedFailed = (user.failed_login_attempts || 0) + 1;
-        await dbRun('UPDATE users SET failed_login_attempts = ? WHERE id = ?', [updatedFailed, user.id]);
-        await logSecurityEvent(user.id, normalizedEmail, 'CAPTCHA_FAILED', req, 'FAILED', 'Invalid CAPTCHA answer');
-
-        const newCaptcha = await generateCaptcha();
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid or expired CAPTCHA code.',
-          requiresCaptcha: true,
-          captchaToken: newCaptcha.token,
-          captchaSvg: newCaptcha.captchaSvg
-        });
-      }
+      await logSecurityEvent(null, normalizedEmail, 'LOGIN_FAILED', req, 'FAILED', 'Unregistered email attempt');
+      return res.status(401).json({ success: false, error: 'wrong mail' });
     }
 
     // Verify Password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      const newFailed = (user.failed_login_attempts || 0) + 1;
-      let lockedUntil = null;
-
-      if (newFailed >= 5) {
-        lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        await dbRun(
-          'UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?',
-          [newFailed, lockedUntil, user.id]
-        );
-        await logSecurityEvent(user.id, normalizedEmail, 'ACCOUNT_LOCKED', req, 'ALERT', 'Account locked after 5 failed login attempts');
-        return res.status(423).json({
-          success: false,
-          error: 'Account locked due to 5 consecutive failed login attempts. Please try again in 15 minutes.'
-        });
-      } else {
-        await dbRun('UPDATE users SET failed_login_attempts = ? WHERE id = ?', [newFailed, user.id]);
-        await logSecurityEvent(user.id, normalizedEmail, 'LOGIN_FAILED', req, 'FAILED', `Failed attempt ${newFailed}/5`);
-      }
-
-      let captchaData = {};
-      if (newFailed >= 3) {
-        const newCaptcha = await generateCaptcha();
-        captchaData = {
-          requiresCaptcha: true,
-          captchaToken: newCaptcha.token,
-          captchaSvg: newCaptcha.captchaSvg
-        };
-      }
-
+      await logSecurityEvent(user.id, normalizedEmail, 'LOGIN_FAILED', req, 'FAILED', 'Invalid password attempt');
       return res.status(401).json({
         success: false,
-        error: 'Invalid credentials.',
-        ...captchaData
+        error: 'Invalid password. Please check your password and try again.'
       });
     }
 
@@ -249,6 +313,8 @@ const login = async (req, res) => {
 
     await logSecurityEvent(user.id, normalizedEmail, 'LOGIN_SUCCESS', req, 'SUCCESS', 'User logged in successfully');
 
+    const stableCreatedAt = normalizeIsoDate(user.created_at);
+
     return res.json({
       success: true,
       message: 'Login successful',
@@ -260,7 +326,8 @@ const login = async (req, res) => {
         role: user.role || 'researcher',
         isVerified: true,
         mfaEnabled: Boolean(user.mfa_enabled),
-        createdAt: user.created_at
+        createdAt: stableCreatedAt,
+        created_at: stableCreatedAt
       }
     });
   } catch (error) {
@@ -496,6 +563,8 @@ const me = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found.' });
     }
 
+    const stableCreatedAt = normalizeIsoDate(user.created_at);
+
     return res.json({
       success: true,
       user: {
@@ -505,7 +574,8 @@ const me = async (req, res) => {
         role: user.role || 'researcher',
         isVerified: true,
         mfaEnabled: Boolean(user.mfa_enabled),
-        createdAt: user.created_at
+        createdAt: stableCreatedAt,
+        created_at: stableCreatedAt
       }
     });
   } catch (error) {
@@ -515,8 +585,9 @@ const me = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    if (req.user) {
-      await logSecurityEvent(req.user.userId, req.user.email, 'USER_LOGOUT', req, 'SUCCESS', 'User logged out');
+    if (req.user?.userId) {
+      await dbRun('UPDATE users SET is_session_active = 0, active_session_id = NULL WHERE id = ?', [req.user.userId]);
+      await logSecurityEvent(req.user.userId, req.user.email, 'USER_LOGOUT', req, 'SUCCESS', 'User logged out and active session released');
     }
     res.clearCookie('nexus_token', COOKIE_OPTIONS);
     return res.json({ success: true, message: 'Logged out successfully.' });
@@ -535,6 +606,13 @@ const deleteAccount = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User account not found.' });
     }
 
+    if (user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        error: 'The primary Administrator account (jiffyresearchnxt@gmail.com) is protected and cannot be deleted.'
+      });
+    }
+
     if (user.mfa_enabled === 1) {
       if (!mfaCode || !verifyTOTPCode(user.mfa_secret, mfaCode)) {
         return res.status(401).json({
@@ -544,7 +622,7 @@ const deleteAccount = async (req, res) => {
       }
     }
 
-    // Explicitly delete user's cascading records
+    // Explicitly delete user's cascading records across all database tables
     await dbRun('DELETE FROM documents WHERE user_id = ?', [userId]);
     await dbRun('DELETE FROM notes WHERE user_id = ?', [userId]);
     await dbRun('DELETE FROM chat_messages WHERE user_id = ?', [userId]);
@@ -554,9 +632,23 @@ const deleteAccount = async (req, res) => {
     await dbRun('DELETE FROM security_audit_logs WHERE user_id = ?', [userId]);
     await dbRun('DELETE FROM users WHERE id = ?', [userId]);
 
+    const { supabase } = require('../db/database');
+    if (supabase) {
+      try {
+        await supabase.from('documents').delete().eq('user_id', userId);
+        await supabase.from('notes').delete().eq('user_id', userId);
+        await supabase.from('chat_messages').delete().eq('user_id', userId);
+        await supabase.from('reports').delete().eq('user_id', userId);
+        await supabase.from('workspaces').delete().eq('user_id', userId);
+        await supabase.from('users').delete().eq('id', userId);
+      } catch (sbErr) {
+        console.warn('Supabase cascade delete note:', sbErr.message);
+      }
+    }
+
     res.clearCookie('nexus_token', COOKIE_OPTIONS);
 
-    return res.json({ success: true, message: 'Account and associated research data deleted successfully.' });
+    return res.json({ success: true, message: 'Account and all associated database records permanently deleted.' });
   } catch (error) {
     console.error('Delete account error:', error);
     return res.status(500).json({ success: false, error: 'Failed to delete account.' });
@@ -566,6 +658,10 @@ const deleteAccount = async (req, res) => {
 module.exports = {
   register,
   login,
+  googleAuth,
+  checkEmailExists,
+  verifyEmail,
+  resendVerification,
   getCaptchaEndpoint,
   forgotPassword,
   resetPassword,

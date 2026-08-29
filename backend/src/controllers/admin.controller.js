@@ -1,12 +1,32 @@
 const { dbGet, dbQuery, dbRun } = require('../db/database');
 const { logSecurityEvent } = require('../services/security.service');
 
+const PRIMARY_ADMIN_EMAIL = 'jiffyresearchnxt@gmail.com';
+
+const normalizeIsoDate = (dateVal) => {
+  if (!dateVal) return new Date().toISOString();
+  if (typeof dateVal === 'string') {
+    if (dateVal.includes('T')) return dateVal;
+    if (dateVal.includes(' ')) return new Date(dateVal.replace(' ', 'T') + 'Z').toISOString();
+  }
+  const d = new Date(dateVal);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+};
+
 const getAuditLogs = async (req, res) => {
   try {
-    const { status, eventType, limit = 100 } = req.query;
+    const { status, eventType, category, limit = 100 } = req.query;
 
     let sql = 'SELECT * FROM security_audit_logs WHERE 1=1';
     const params = [];
+
+    if (category === 'logins') {
+      sql += " AND event_type IN ('LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGIN_BLOCKED_LOCKED', 'MFA_CHALLENGE_ISSUED', 'MFA_FAILED', 'USER_LOGOUT')";
+    } else if (category === 'registrations') {
+      sql += " AND event_type IN ('USER_REGISTERED', 'REGISTER_DUPLICATE_ATTEMPT', 'REGISTER_INVALID_EMAIL_DOMAIN')";
+    } else if (category === 'security') {
+      sql += " AND (status IN ('ALERT', 'WARNING') OR event_type LIKE 'ACCOUNT_%' OR event_type LIKE 'CAPTCHA_%')";
+    }
 
     if (status) {
       sql += ' AND status = ?';
@@ -18,9 +38,14 @@ const getAuditLogs = async (req, res) => {
     }
 
     sql += ' ORDER BY id DESC LIMIT ?';
-    params.push(parseInt(limit, 10));
+    params.push(parseInt(limit, 10) || 100);
 
-    const logs = await dbQuery(sql, params);
+    const rawLogs = await dbQuery(sql, params);
+    const logs = rawLogs.map(l => ({
+      ...l,
+      created_at: normalizeIsoDate(l.created_at)
+    }));
+
     return res.json({ success: true, logs });
   } catch (error) {
     console.error('Admin audit logs error:', error);
@@ -30,12 +55,17 @@ const getAuditLogs = async (req, res) => {
 
 const getUsers = async (req, res) => {
   try {
-    const users = await dbQuery(
+    const rawUsers = await dbQuery(
       `SELECT id, name, email, role, is_verified, failed_login_attempts, locked_until, mfa_enabled, created_at 
-       FROM users ORDER BY id DESC`
+       FROM users ORDER BY id DESC LIMIT 100`
     );
 
-    return res.json({ success: true, users });
+    const users = rawUsers.map(u => ({
+      ...u,
+      created_at: normalizeIsoDate(u.created_at)
+    }));
+
+    return res.json({ success: true, users, count: users.length });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to fetch user list.' });
   }
@@ -50,6 +80,24 @@ const updateUserRole = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Target user not found.' });
     }
 
+    const isPrimaryAdmin = targetUser.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase();
+
+    // Prevent changing the sole primary admin to any other role
+    if (isPrimaryAdmin && role !== 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'The primary Administrator role (jiffyresearchnxt@gmail.com) cannot be demoted or modified.'
+      });
+    }
+
+    // Prevent promoting any other user to 'admin'
+    if (!isPrimaryAdmin && role === 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'There can only be one Administrator (jiffyresearchnxt@gmail.com). Promoting other accounts to Admin is prohibited.'
+      });
+    }
+
     await dbRun('UPDATE users SET role = ? WHERE id = ?', [role, userId]);
     await logSecurityEvent(
       req.user.userId, 
@@ -62,7 +110,7 @@ const updateUserRole = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `User role updated to ${role} successfully.`
+      message: `User role for ${targetUser.email} updated to ${role} successfully.`
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to update user role.' });

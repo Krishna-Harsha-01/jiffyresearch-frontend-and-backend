@@ -396,9 +396,72 @@ Output JSON format strictly as follows:
   return { nodes: [], links: [], conceptEfficiency: [], pieChartData: defaultPieData };
 };
 
+const extractEvidenceNotesFromDocs = async (documents, requestedTag = 'Key Finding') => {
+  const genAI = getGeminiClient();
+  const validTags = ["Key Finding", "Methodology Gap", "Empirical Citation", "Hypothesis"];
+  const targetTag = validTags.includes(requestedTag) ? requestedTag : "Key Finding";
+
+  if (!genAI || !documents || documents.length === 0) {
+    return [
+      {
+        title: `${targetTag} in ${documents?.[0]?.title || 'Document'}`,
+        tag: targetTag,
+        content: documents?.[0]?.summary || `Structured ${targetTag.toLowerCase()} synthesized across primary uploaded research materials.`
+      }
+    ];
+  }
+
+  const tagGuidelines = {
+    "Key Finding": "Extract 3 to 5 core empirical breakthroughs, statistical outcomes, and major conclusions.",
+    "Methodology Gap": "Extract 3 to 5 critical research limitations, unaddressed variables, sample biases, and methodological gaps.",
+    "Empirical Citation": "Extract 3 to 5 exact quantitative metrics, evidentiary quotes, and citation references.",
+    "Hypothesis": "Extract 3 to 5 forward-looking research hypotheses and theoretical extensions based on the findings."
+  };
+
+  const prompt = `You are a Senior Research Scientist and Intelligence Analyst.
+Task: Analyze the following research documents and extract 3 to 5 high-value structured evidence notes of category: "${targetTag}".
+Guideline for this category: ${tagGuidelines[targetTag] || tagGuidelines["Key Finding"]}
+
+For each note, output:
+- "title": concise, impactful title (e.g., "${targetTag === 'Methodology Gap' ? 'Scope Limitation in European Police Data' : '94.2% Predictive Accuracy Anomaly'}")
+- "tag": "${targetTag}"
+- "content": 2-3 detailed, informative sentences explaining the specific ${targetTag.toLowerCase()} from the text.
+
+Documents:
+${documents.map(d => `Title: ${d.title}\nContent: ${(d.content || d.summary || '').slice(0, 3500)}`).join('\n\n')}
+
+Return ONLY a valid JSON array of objects without markdown fences:
+[
+  { "title": "...", "tag": "${targetTag}", "content": "..." }
+]`;
+
+  try {
+    const rawText = await generateContentWithFallback(genAI, prompt);
+    const parsed = safeParseJSON(rawText);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map(item => ({
+        title: item.title || `${targetTag} Insight`,
+        tag: targetTag,
+        content: item.content || item.summary || ''
+      }));
+    }
+  } catch (err) {
+    console.error('Failed to extract evidence notes with Gemini:', err.message);
+  }
+
+  return [
+    {
+      title: `${targetTag}: Core Analysis in ${documents[0]?.title || 'Document'}`,
+      tag: targetTag,
+      content: documents[0]?.summary || `Detailed ${targetTag.toLowerCase()} synthesized from document analysis.`
+    }
+  ];
+};
+
 module.exports = {
   summarizeDocument,
   chatWithResearchContext,
   generateResearchReport,
-  generateKnowledgeGraph
+  generateKnowledgeGraph,
+  extractEvidenceNotesFromDocs
 };

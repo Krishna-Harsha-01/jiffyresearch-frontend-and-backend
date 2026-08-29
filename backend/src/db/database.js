@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
 // Environment check for Supabase
@@ -97,6 +98,12 @@ const initDatabase = async () => {
     await addColumnIfMissing('users', 'mfa_enabled', 'INTEGER DEFAULT 0');
     await addColumnIfMissing('users', 'mfa_secret', 'TEXT');
     await addColumnIfMissing('users', 'mfa_backup_codes', 'TEXT');
+    await addColumnIfMissing('users', 'auth_provider', "TEXT DEFAULT 'google'");
+    await addColumnIfMissing('users', 'google_id', 'TEXT');
+    await addColumnIfMissing('users', 'avatar_url', 'TEXT');
+    await addColumnIfMissing('users', 'is_session_active', 'INTEGER DEFAULT 0');
+    await addColumnIfMissing('users', 'active_session_id', 'TEXT');
+    await addColumnIfMissing('users', 'last_active_at', 'DATETIME');
 
     // Password resets table
     await dbRun(`
@@ -195,11 +202,18 @@ const initDatabase = async () => {
         sender TEXT NOT NULL,
         message TEXT NOT NULL,
         citations TEXT,
+        session_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     `);
+
+    try {
+      await dbRun('ALTER TABLE chat_messages ADD COLUMN session_id TEXT');
+    } catch (e) {
+      // Column may already exist
+    }
 
     // Reports table
     await dbRun(`
@@ -216,6 +230,41 @@ const initDatabase = async () => {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     `);
+
+    // Ensure Sole Admin Account (jiffyresearchnxt@gmail.com / Jiffy123)
+    const adminEmail = 'jiffyresearchnxt@gmail.com';
+    const adminUser = await dbGet('SELECT id, email, password_hash, role FROM users WHERE LOWER(email) = LOWER(?)', [adminEmail]);
+    const salt = await bcrypt.genSalt(10);
+    const adminPasswordHash = await bcrypt.hash('Jiffy123', salt);
+
+    if (!adminUser) {
+      const adminInsert = await dbRun(
+        `INSERT INTO users (name, email, password_hash, role, is_verified, created_at)
+         VALUES (?, ?, ?, 'admin', 1, CURRENT_TIMESTAMP)`,
+        ['Jiffy Admin', adminEmail, adminPasswordHash]
+      );
+      // Create default workspace for Admin
+      await dbRun(
+        'INSERT INTO workspaces (user_id, name, description, domain) VALUES (?, ?, ?, ?)',
+        [adminInsert.id, 'Jiffy Admin Workspace', 'Primary AI Research Administration Console', 'System Administration']
+      );
+      console.log('👑 Single Admin account (jiffyresearchnxt@gmail.com) created.');
+    } else {
+      // Ensure admin has role 'admin', is_verified = 1, and password hash updated to Jiffy123
+      await dbRun(
+        `UPDATE users SET role = 'admin', is_verified = 1, password_hash = ? WHERE LOWER(email) = LOWER(?)`,
+        [adminPasswordHash, adminEmail]
+      );
+    }
+
+    // Demote any other user with 'admin' role to 'researcher' (strict single-admin rule)
+    await dbRun(
+      `UPDATE users SET role = 'researcher' WHERE LOWER(email) != LOWER(?) AND role = 'admin'`,
+      [adminEmail]
+    );
+
+    // Clear any past account lockouts
+    await dbRun('UPDATE users SET failed_login_attempts = 0, locked_until = NULL');
 
     console.log('✅ SQLite & Supabase Database layer initialized successfully.');
   } catch (error) {

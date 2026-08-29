@@ -3,6 +3,10 @@ const router = express.Router();
 const {
   register,
   login,
+  googleAuth,
+  checkEmailExists,
+  verifyEmail,
+  resendVerification,
   getCaptchaEndpoint,
   forgotPassword,
   resetPassword,
@@ -27,13 +31,15 @@ const {
 } = require('../middleware/validate');
 
 // Public Authentication Endpoints
+router.post('/google', googleAuth);
+router.post('/check-email', checkEmailExists);
 router.post('/register', registerLimiter, validateBody(registerSchema), register);
 router.post('/login', loginLimiter, validateBody(loginSchema), login);
 router.get('/captcha', getCaptchaEndpoint);
 
-// Verification endpoint fallback (Accounts are verified automatically upon registration)
-router.post('/verify-email', (req, res) => res.json({ success: true, message: 'Account is already verified.' }));
-router.post('/resend-verification', (req, res) => res.json({ success: true, message: 'Account is already verified.' }));
+// Email Verification endpoints
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerification);
 
 router.post('/forgot-password', loginLimiter, validateBody(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validateBody(resetPasswordSchema), resetPassword);

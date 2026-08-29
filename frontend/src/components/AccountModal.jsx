@@ -5,39 +5,44 @@ import {
   Calendar, 
   Clock, 
   ShieldCheck, 
-  Cpu, 
-  Sliders, 
   LogOut, 
   Trash2, 
   X, 
   CheckCircle2, 
-  Sparkles,
-  Layers,
-  Database
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AccountModal({ isOpen, onClose }) {
   const { user, logout, deleteAccount } = useAuth();
-  const [activeTab, setActiveTab] = useState('account');
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [showConfirmLogout, setShowConfirmLogout] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isOpen || !user) return null;
 
-  // Format account created date and time
-  const createdDate = user.created_at ? new Date(user.created_at) : new Date();
-  const formattedDate = createdDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  const formattedTime = createdDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  });
+  // Format account created date and time stably
+  const rawCreated = user.createdAt || user.created_at;
+  const createdDate = rawCreated ? new Date(rawCreated) : null;
+  const isValidDate = createdDate && !isNaN(createdDate.getTime());
+
+  const formattedDate = isValidDate
+    ? createdDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    : 'Unknown Date';
+
+  const formattedTime = isValidDate
+    ? createdDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      })
+    : 'Unknown Time';
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -61,6 +66,19 @@ export default function AccountModal({ isOpen, onClose }) {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setShowConfirmLogout(false);
+      onClose();
+      await logout();
+      window.location.replace('/login');
+    } catch (e) {
+      window.location.replace('/login');
+    }
+  };
+
+  const isAdmin = user?.role === 'admin' || user?.email?.toLowerCase() === 'jiffyresearchnxt@gmail.com';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
       <div className="bg-[#09090b] text-white w-full max-w-2xl rounded-3xl p-6 sm:p-8 border border-zinc-800 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
@@ -83,8 +101,12 @@ export default function AccountModal({ isOpen, onClose }) {
               <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
                 {user.name}
               </h2>
-              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#d2f235]/20 text-[#d2f235] border border-[#d2f235]/40">
-                Verified Researcher
+              <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                isAdmin 
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                  : 'bg-[#d2f235]/20 text-[#d2f235] border border-[#d2f235]/40'
+              }`}>
+                {isAdmin ? 'System Administrator' : 'Verified Researcher'}
               </span>
             </div>
             <p className="text-xs text-zinc-400 font-medium flex items-center gap-1.5 mt-0.5">
@@ -94,202 +116,160 @@ export default function AccountModal({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 mb-6 shrink-0">
-          <button
-            onClick={() => setActiveTab('account')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-              activeTab === 'account'
-                ? 'bg-white text-black shadow-md'
-                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <User className="w-4 h-4" />
-            <span>My Account Details</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-              activeTab === 'settings'
-                ? 'bg-white text-black shadow-md'
-                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>AI Settings & Engine</span>
-          </button>
-        </div>
-
-        {/* Tab Content Area */}
+        {/* Modal Body: Account Details */}
         <div className="overflow-y-auto pr-1 space-y-6 flex-1">
           
-          {activeTab === 'account' && (
-            <div className="space-y-6">
-              
-              {/* Account Created At Details Card */}
-              <div className="bg-[#121215] p-5 rounded-2xl border border-zinc-800 space-y-4 shadow-sm">
-                <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
+          {/* Account Created At Details Card */}
+          <div className="bg-[#121215] p-5 rounded-2xl border border-zinc-800 space-y-4 shadow-sm">
+            <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#d2f235]" />
+              <span>Account Registration & Timestamp</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800">
+                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                  Registration Date
+                </span>
+                <div className="text-sm font-black text-white flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-[#d2f235]" />
-                  <span>Account Registration & Timestamp</span>
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                  <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800">
-                    <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
-                      Registration Date
-                    </span>
-                    <div className="text-sm font-black text-white flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-[#d2f235]" />
-                      <span>{formattedDate}</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800">
-                    <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
-                      Registration Time
-                    </span>
-                    <div className="text-sm font-black text-white flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-[#d2f235]" />
-                      <span>{formattedTime}</span>
-                    </div>
-                  </div>
+                  <span>{formattedDate}</span>
                 </div>
               </div>
 
-              {/* Account Profile Summary Info */}
-              <div className="bg-[#121215] p-5 rounded-2xl border border-zinc-800 space-y-3">
-                <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-[#d2f235]" />
-                  <span>Account Status & Authentication</span>
-                </h3>
-
-                <div className="space-y-2.5 pt-1">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-[#18181b] border border-zinc-800 text-xs font-bold">
-                    <span className="text-zinc-400">User ID</span>
-                    <span className="text-zinc-300 font-mono text-[11px]">USR-{user.id || '2026-001'}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-[#18181b] border border-zinc-800 text-xs font-bold">
-                    <span className="text-zinc-400">Database Synchronization</span>
-                    <span className="text-emerald-400 font-extrabold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Active & Synchronized
-                    </span>
-                  </div>
+              <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800">
+                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                  Registration Time
+                </span>
+                <div className="text-sm font-black text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#d2f235]" />
+                  <span>{formattedTime}</span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Account Danger Actions */}
-              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800">
+          {/* Account Danger Actions */}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800">
+            {!showConfirmLogout ? (
+              <button
+                onClick={() => setShowConfirmLogout(true)}
+                className="px-5 py-2.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold text-xs flex items-center gap-2 transition-all shadow-md cursor-pointer"
+              >
+                <LogOut className="w-4 h-4 text-[#d2f235]" />
+                <span>Sign Out of Account</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 bg-[#d2f235]/10 p-2 rounded-2xl border border-[#d2f235]/30">
+                <span className="text-[11px] font-bold text-zinc-300 pl-2">Are you sure you want to log out?</span>
                 <button
-                  onClick={logout}
-                  className="px-5 py-2.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold text-xs flex items-center gap-2 transition-all shadow-md"
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 rounded-xl bg-[#d2f235] hover:bg-[#c2e225] text-black font-black text-xs transition-colors cursor-pointer"
                 >
-                  <LogOut className="w-4 h-4 text-[#d2f235]" />
-                  <span>Sign Out of Account</span>
+                  Yes, Log Out
                 </button>
-
-                {!showConfirmDelete ? (
-                  <button
-                    onClick={() => setShowConfirmDelete(true)}
-                    className="px-4 py-2 rounded-full text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Account</span>
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 bg-rose-500/10 p-2 rounded-2xl border border-rose-500/30">
-                    <span className="text-[11px] font-bold text-rose-300 pl-2">Confirm permanent deletion?</span>
-                    <button
-                      onClick={handleDelete}
-                      disabled={isDeleting}
-                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs transition-colors"
-                    >
-                      {isDeleting ? 'Deleting...' : 'Yes, Delete'}
-                    </button>
-                    <button
-                      onClick={() => setShowConfirmDelete(false)}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 font-bold text-xs"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
+                <button
+                  onClick={() => setShowConfirmLogout(false)}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
               </div>
+            )}
 
-            </div>
-          )}
-
-          {activeTab === 'settings' && (
-            <div className="space-y-6">
-              
-              {/* AI Engine Configuration Card */}
-              <div className="bg-[#121215] p-5 rounded-2xl border border-zinc-800 space-y-4">
-                <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-[#d2f235]" />
-                  <span>AI Engine Specifications</span>
-                </h3>
-
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-white uppercase">Primary AI Engine</h4>
-                      <p className="text-[11px] text-zinc-400 font-medium">Google Gemini 2.5 Flash High-Speed Reasoning</p>
-                    </div>
-                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded bg-[#d2f235]/20 text-[#d2f235] border border-[#d2f235]/40">
-                      ACTIVE
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-white uppercase">Context Horizon Window</h4>
-                      <p className="text-[11px] text-zinc-400 font-medium">6,000 Characters per uploaded research document</p>
-                    </div>
-                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
-                      EXPANDED
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-white uppercase">Evidence Grounding</h4>
-                      <p className="text-[11px] text-zinc-400 font-medium">Automatic multi-document citation verification</p>
-                    </div>
-                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      ENABLED
-                    </span>
-                  </div>
-                </div>
+            {!isAdmin ? (
+              <button
+                onClick={() => setShowConfirmDelete(true)}
+                className="px-4 py-2 rounded-full text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Account</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>Protected Administrator Account</span>
               </div>
-
-              {/* Data & Storage Preferences */}
-              <div className="bg-[#121215] p-5 rounded-2xl border border-zinc-800 space-y-3">
-                <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <Database className="w-4 h-4 text-[#d2f235]" />
-                  <span>Workspace & Storage Settings</span>
-                </h3>
-
-                <div className="space-y-2 pt-1 text-xs text-zinc-300 font-medium">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-[#18181b] border border-zinc-800">
-                    <span>Local SQLite Database Cache</span>
-                    <span className="font-bold text-emerald-400">Connected</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-[#18181b] border border-zinc-800">
-                    <span>Synthesis Output Template</span>
-                    <span className="font-bold text-[#d2f235]">Salford & Co. Deep Burgundy</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )}
+            )}
+          </div>
 
         </div>
 
       </div>
+
+      {/* Permanent Account Deletion Warning Modal */}
+      {showConfirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#09090b] text-white w-full max-w-lg rounded-3xl p-6 sm:p-8 border border-rose-500/40 shadow-2xl relative space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto shadow-inner">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-lg sm:text-xl font-black text-white uppercase tracking-tight font-['Cinzel']">
+                Permanently Delete Account & Data?
+              </h3>
+              <p className="text-xs text-rose-300/90 font-medium leading-relaxed">
+                Warning: This action will permanently erase your user account (<strong className="text-white">{user?.email}</strong>) and execute a total database purge.
+              </p>
+            </div>
+
+            {/* List of Data to be Erased */}
+            <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/20 text-xs space-y-2 text-zinc-300 text-left">
+              <div className="text-[11px] font-black uppercase text-rose-300 tracking-wider mb-1">
+                The following data will be permanently destroyed:
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All uploaded research papers & PDF files</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All saved evidence notes & annotations</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All Gemini AI Assistant chat logs & previous sessions</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All synthesized literature review reports</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All research workspaces & knowledge graph mappings</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>Authentication credentials & cloud database records</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-zinc-500 text-center font-semibold">
+              ⚠️ This action is instantaneous, non-reversible, and cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmDelete(false)}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel / Keep Account
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDelete}
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'Erasing All Data...' : 'Yes, Permanently Delete All Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -1,4 +1,4 @@
-const { dbGet } = require('../db/database');
+const PRIMARY_ADMIN_EMAIL = 'jiffyresearchnxt@gmail.com';
 
 // Require specific user roles (e.g. requireRole('admin'), requireRole('admin', 'researcher'))
 const requireRole = (...allowedRoles) => {
@@ -8,6 +8,18 @@ const requireRole = (...allowedRoles) => {
     }
 
     const userRole = req.user.role || 'researcher';
+    const userEmail = (req.user.email || '').toLowerCase();
+
+    // Sole Admin enforcement: only jiffyresearchnxt@gmail.com is allowed admin privileges
+    if (allowedRoles.includes('admin') && allowedRoles.length === 1) {
+      if (userRole !== 'admin' || userEmail !== PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden. Admin console is strictly restricted to the primary administrator (jiffyresearchnxt@gmail.com).'
+        });
+      }
+    }
+
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,

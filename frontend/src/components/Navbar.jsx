@@ -25,25 +25,30 @@ import {
 import UserManualModal from './UserManualModal';
 import OnboardingModal from './OnboardingModal';
 import AccountModal from './AccountModal';
-import SecurityCenterModal from './SecurityCenterModal';
 
 export default function Navbar() {
-  const { user, logout, deleteAccount, isSecurityModalOpen, setIsSecurityModalOpen } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const { themeMode, setThemeMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showManualModal, setShowManualModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    setMobileMenuOpen(false);
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      setShowLogoutModal(false);
+      setMobileMenuOpen(false);
+      await logout();
+      window.location.replace('/login');
+    } catch (e) {
+      window.location.replace('/login');
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -157,20 +162,10 @@ export default function Navbar() {
             </button>
           </nav>
 
-          {/* Desktop User Auth & Security Controls */}
+          {/* Desktop User Auth Controls */}
           <div className="hidden md:flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
-                {/* Security Center Button */}
-                <button
-                  onClick={() => setIsSecurityModalOpen(true)}
-                  className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 transition-all cursor-pointer flex items-center gap-1.5 px-3"
-                  title="Security Center (2FA, Audit Logs, Verification)"
-                >
-                  <ShieldCheck className="w-4 h-4 text-[#d4af37]" />
-                  <span className="text-xs font-bold text-zinc-200">Security</span>
-                </button>
-
                 <button
                   onClick={() => setShowAccountModal(true)}
                   className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-all shadow-md group cursor-pointer"
@@ -186,8 +181,8 @@ export default function Navbar() {
                 </button>
 
                 <button
-                  onClick={handleLogout}
-                  className="p-2 rounded-full text-zinc-400 hover:text-white transition-colors"
+                  onClick={() => setShowLogoutModal(true)}
+                  className="p-2 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer"
                   title="Log Out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -197,16 +192,10 @@ export default function Navbar() {
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="btn-recraft-secondary px-5 py-2 rounded-full text-xs"
+                  className="btn-recraft-lime px-5 py-2 rounded-full text-xs font-black flex items-center gap-1.5 shadow-lg cursor-pointer"
                 >
-                  Sign In
-                </Link>
-                <Link
-                  to="/register"
-                  className="btn-recraft-lime px-5 py-2 rounded-full text-xs flex items-center gap-1.5"
-                >
-                  Try Jiffy Studio
-                  <ArrowRight className="w-4 h-4" />
+                  <span>Sign In with Google</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             )}
@@ -231,42 +220,24 @@ export default function Navbar() {
               <Link
                 to="/"
                 onClick={() => setMobileMenuOpen(false)}
-                className="px-4 py-3 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-900 flex items-center gap-2"
+                className={`px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 ${
+                  isActive('/') ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-300 hover:bg-slate-900'
+                }`}
               >
-                <Cpu className="w-4 h-4 text-indigo-400" />
+                <BookOpen className="w-4 h-4" />
                 Overview
               </Link>
               {user && (
                 <Link
                   to="/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="px-4 py-3 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-900 flex items-center gap-2"
+                  className={`px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 ${
+                    isActive('/dashboard') ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-300 hover:bg-slate-900'
+                  }`}
                 >
-                  <FolderKanban className="w-4 h-4 text-indigo-400" />
-                  My Workspaces
+                  <FolderKanban className="w-4 h-4" />
+                  Workspaces
                 </Link>
-              )}
-              {user?.role === 'admin' && (
-                <Link
-                  to="/admin/security"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="px-4 py-3 rounded-xl text-sm font-semibold text-amber-300 hover:bg-slate-900 flex items-center gap-2"
-                >
-                  <ShieldAlert className="w-4 h-4 text-amber-400" />
-                  Admin Security Console
-                </Link>
-              )}
-              {user && (
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setIsSecurityModalOpen(true);
-                  }}
-                  className="px-4 py-3 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-900 flex items-center gap-2 text-left"
-                >
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  Security Center (2FA & Audit Logs)
-                </button>
               )}
               <button
                 onClick={() => {
@@ -304,8 +275,11 @@ export default function Navbar() {
                   </div>
 
                   <button
-                    onClick={handleLogout}
-                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold text-xs flex items-center justify-center gap-2"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setShowLogoutModal(true);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
                     Sign Out
@@ -316,16 +290,10 @@ export default function Navbar() {
                   <Link
                     to="/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="w-full py-3 rounded-xl text-center text-sm font-semibold text-slate-200 bg-slate-900 border border-slate-800"
+                    className="w-full py-3 rounded-xl text-center text-sm font-bold text-black btn-recraft-lime flex items-center justify-center gap-2"
                   >
-                    Sign In
-                  </Link>
-                  <Link
-                    to="/register"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="w-full py-3 rounded-xl text-center text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-600/30"
-                  >
-                    Get Started Free
+                    <span>Sign In with Google</span>
+                    <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
               )}
@@ -334,34 +302,108 @@ export default function Navbar() {
         )}
       </header>
 
-      {/* Account Deletion Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="glass-panel w-full max-w-md p-6 rounded-3xl border border-red-500/40 shadow-2xl relative">
-            <div className="w-12 h-12 rounded-2xl bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center mb-4 mx-auto shadow-inner">
-              <AlertTriangle className="w-6 h-6" />
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#09090b] text-white w-full max-w-sm rounded-3xl p-6 sm:p-7 border border-zinc-800 shadow-2xl relative">
+            <div className="w-12 h-12 rounded-2xl bg-[#d2f235]/15 text-[#d2f235] border border-[#d2f235]/30 flex items-center justify-center mb-4 mx-auto shadow-inner">
+              <LogOut className="w-6 h-6" />
             </div>
 
-            <h3 className="text-lg font-extrabold text-white text-center">Delete Account Permanently?</h3>
-            <p className="text-xs text-slate-300 text-center mt-2 leading-relaxed">
-              This action will permanently delete your user account (<strong className="text-white">{user?.email}</strong>) and remove all your research workspaces, uploaded papers, and AI reports.
+            <h3 className="text-base sm:text-lg font-black text-white text-center">
+              Are you sure you want to log out?
+            </h3>
+            <p className="text-xs text-zinc-400 text-center mt-2 leading-relaxed">
+              You will need to sign in again to access your research workspaces and console.
             </p>
 
-            <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-slate-800">
+            <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-zinc-800">
               <button
                 type="button"
-                onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+                onClick={() => setShowLogoutModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                onClick={handleLogout}
+                className="px-5 py-2.5 rounded-xl bg-[#d2f235] hover:bg-[#c2e225] text-black font-black text-xs shadow-lg transition-all cursor-pointer"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Deletion Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#09090b] text-white w-full max-w-lg rounded-3xl p-6 sm:p-8 border border-rose-500/40 shadow-2xl relative space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto shadow-inner">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-lg sm:text-xl font-black text-white uppercase tracking-tight font-['Cinzel']">
+                Permanently Delete Account & Data?
+              </h3>
+              <p className="text-xs text-rose-300/90 font-medium leading-relaxed">
+                Warning: This action will permanently erase your user account (<strong className="text-white">{user?.email}</strong>) and execute a total database purge.
+              </p>
+            </div>
+
+            {/* List of Data to be Erased */}
+            <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/20 text-xs space-y-2 text-zinc-300 text-left">
+              <div className="text-[11px] font-black uppercase text-rose-300 tracking-wider mb-1">
+                The following data will be permanently destroyed:
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All uploaded research papers & PDF files</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All saved evidence notes & annotations</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All Gemini AI Assistant chat logs & previous sessions</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All synthesized literature review reports</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>All research workspaces & knowledge graph mappings</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-rose-400">✕</span>
+                <span>Authentication credentials & cloud database records</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-zinc-500 text-center font-semibold">
+              ⚠️ This action is instantaneous, non-reversible, and cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel / Keep Account
+              </button>
+              <button
+                type="button"
                 disabled={deleting}
                 onClick={handleDeleteAccount}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer disabled:opacity-50"
               >
-                {deleting ? 'Deleting Account...' : 'Yes, Delete My Account'}
+                {deleting ? 'Erasing All Data...' : 'Yes, Permanently Delete All Data'}
               </button>
             </div>
           </div>
@@ -384,12 +426,6 @@ export default function Navbar() {
       <AccountModal
         isOpen={showAccountModal}
         onClose={() => setShowAccountModal(false)}
-      />
-
-      {/* Security Center Modal */}
-      <SecurityCenterModal
-        isOpen={isSecurityModalOpen}
-        onClose={() => setIsSecurityModalOpen(false)}
       />
     </>
   );

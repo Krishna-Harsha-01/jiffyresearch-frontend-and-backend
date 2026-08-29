@@ -49,17 +49,9 @@ const createRateLimiter = (options = {}) => {
   };
 };
 
-const loginLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: 'Too many failed login attempts from this IP. Please wait 15 minutes before trying again.'
-});
+const loginLimiter = (req, res, next) => next();
 
-const registerLimiter = createRateLimiter({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: 'Too many account creation requests from this IP. Please try again later.'
-});
+const registerLimiter = (req, res, next) => next();
 
 const generalLimiter = createRateLimiter({
   windowMs: 60 * 1000,

@@ -68,60 +68,69 @@ const TRUSTED_DOMAINS = new Set([
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 /**
- * Validate that an email address has a valid format and is not a fake/disposable domain.
+ * Validate that an email address has a valid format, is real, and domain is present on DNS.
  */
 async function validateEmailDeliverability(email) {
   if (!email || typeof email !== 'string') {
-    return { valid: false, reason: 'Email address is required.' };
+    return { valid: false, reason: 'wrong mail' };
   }
 
   const cleanEmail = email.trim().toLowerCase();
 
   // 1. Strict RFC 5322 Email Format Validation
   if (!EMAIL_REGEX.test(cleanEmail)) {
-    return { valid: false, reason: 'Please enter a valid email address (e.g. name@gmail.com).' };
+    return { valid: false, reason: 'wrong mail' };
   }
 
   const parts = cleanEmail.split('@');
   if (parts.length !== 2) {
-    return { valid: false, reason: 'Invalid email address format.' };
+    return { valid: false, reason: 'wrong mail' };
   }
 
   const [localPart, domain] = parts;
 
   if (!localPart || !domain || localPart.length > 64 || domain.length > 255) {
-    return { valid: false, reason: 'Email format exceeds standard RFC limits.' };
+    return { valid: false, reason: 'wrong mail' };
   }
 
   // 2. Check Disposable Email Blacklist
   if (DISPOSABLE_DOMAINS.has(domain)) {
-    return {
-      valid: false,
-      reason: 'Temporary / disposable email domains are not allowed. Please use a valid email address.'
-    };
+    return { valid: false, reason: 'wrong mail' };
   }
 
-  // 3. Trusted Major Mail Providers (Gmail, Yahoo, Outlook, etc.) pass immediately
+  // 3. Gmail-specific validation checks
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    // Gmail usernames cannot start/end with dot or have consecutive dots
+    if (localPart.startsWith('.') || localPart.endsWith('.') || localPart.includes('..')) {
+      return { valid: false, reason: 'wrong mail' };
+    }
+    // Gmail usernames are minimum 3 characters
+    if (localPart.length < 3) {
+      return { valid: false, reason: 'wrong mail' };
+    }
+    return { valid: true, domain };
+  }
+
+  // 4. Trusted Major Mail Providers
   if (TRUSTED_DOMAINS.has(domain) || domain.endsWith('.edu') || domain.endsWith('.ac.uk') || domain.endsWith('.gov') || domain.endsWith('.org')) {
     return { valid: true, domain };
   }
 
-  // 4. DNS MX Record Resolution for custom/corporate domains with graceful fallback
+  // 5. DNS MX Record Resolution to verify domain exists on the internet
   try {
     const mxRecords = await Promise.race([
       dns.resolveMx(domain),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('DNS_TIMEOUT')), 2500))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DNS_TIMEOUT')), 3000))
     ]);
 
     if (!mxRecords || mxRecords.length === 0) {
-      return {
-        valid: false,
-        reason: `The email domain '@${domain}' does not have active mail servers (MX records).`
-      };
+      return { valid: false, reason: 'wrong mail' };
     }
   } catch (dnsErr) {
-    // If DNS times out or local network lookup fails, log warning and allow standard valid format to avoid blocking legitimate users
-    console.warn(`DNS MX check note for '@${domain}':`, dnsErr.message);
+    // If domain has no MX records or doesn't exist
+    if (dnsErr.code === 'ENOTFOUND' || dnsErr.code === 'ENODATA' || dnsErr.code === 'ESERVFAIL') {
+      return { valid: false, reason: 'wrong mail' };
+    }
   }
 
   return { valid: true, domain };
@@ -159,7 +168,7 @@ function createTransporter() {
 }
 
 /**
- * Send Verification Email
+ * Send Verification Email with Activation Link
  */
 async function sendVerificationEmail(recipientEmail, userName, verificationToken) {
   const transporter = createTransporter();
@@ -174,9 +183,21 @@ async function sendVerificationEmail(recipientEmail, userName, verificationToken
       </div>
       
       <div style="padding: 32px 24px;">
-        <h2 style="color: #ffffff; font-size: 18px; margin-top: 0;">Welcome to Jiffy Research</h2>
-        <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">Hello ${userName},</p>
-        <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">Your research workspace has been successfully activated for ${recipientEmail}.</p>
+        <h2 style="color: #ffffff; font-size: 18px; margin-top: 0;">Confirm Your Email Address</h2>
+        <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">Hello ${userName || 'Researcher'},</p>
+        <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">Thank you for registering with Jiffy Research. To activate your account and access your AI research workspace, please click the button below to verify your email address:</p>
+        
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${verifyUrl}" style="background-color: #d2f235; color: #000000; font-weight: bold; font-size: 14px; padding: 14px 28px; border-radius: 9999px; text-decoration: none; display: inline-block; box-shadow: 0 4px 14px rgba(210, 242, 53, 0.4);">
+            Confirm & Activate Account
+          </a>
+        </div>
+        
+        <p style="color: #a1a1aa; font-size: 12px; line-height: 1.5; margin-top: 24px;">
+          Or copy and paste this confirmation URL into your browser:<br/>
+          <a href="${verifyUrl}" style="color: #d2f235; word-break: break-all;">${verifyUrl}</a>
+        </p>
+        <p style="color: #71717a; font-size: 11px; margin-top: 20px;">This confirmation link is valid for 24 hours. If you did not create this account, please disregard this email.</p>
       </div>
     </div>
   `;
@@ -184,13 +205,18 @@ async function sendVerificationEmail(recipientEmail, userName, verificationToken
   const mailOptions = {
     from: `"Jiffy Research" <${process.env.SMTP_FROM || process.env.GMAIL_USER || 'no-reply@jiffyresearch.ai'}>`,
     to: recipientEmail,
-    subject: 'Welcome to Jiffy Research',
+    subject: 'Confirm your Jiffy Research Account',
     html: htmlContent
   };
 
-  const info = await transporter.sendMail(mailOptions);
-  console.log(`✉️ Confirmation email sent to ${recipientEmail}`);
-  return info;
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✉️ Confirmation email sent to ${recipientEmail}`);
+    return { info, verifyUrl };
+  } catch (err) {
+    console.error('Email send error:', err.message);
+    return { verifyUrl };
+  }
 }
 
 /**

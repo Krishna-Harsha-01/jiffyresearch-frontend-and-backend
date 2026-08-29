@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { CheckCircle2, AlertCircle, Loader2, MailCheck } from 'lucide-react';
 import { authService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function EmailVerificationPage() {
   const [searchParams] = useSearchParams();
@@ -10,6 +11,7 @@ export default function EmailVerificationPage() {
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const { handleAuthSuccess } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,6 +26,9 @@ export default function EmailVerificationPage() {
         const res = await authService.verifyEmail({ token });
         if (res.data.success) {
           setSuccess(true);
+          if (res.data.user) {
+            handleAuthSuccess(res.data.user, res.data.token);
+          }
         } else {
           setError(res.data.error || 'Verification failed.');
         }

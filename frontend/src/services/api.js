@@ -23,11 +23,13 @@ api.interceptors.request.use((config) => {
 
 // Auth Services
 export const authService = {
+  googleAuth: (data) => api.post('/auth/google', data),
+  checkEmail: (email) => api.post('/auth/check-email', { email }),
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getCaptcha: () => api.get('/auth/captcha'),
   verifyEmail: (data) => api.post('/auth/verify-email', data),
-  resendVerification: () => api.post('/auth/resend-verification'),
+  resendVerification: (data) => api.post('/auth/resend-verification', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
   setupMfa: () => api.post('/auth/mfa/setup'),
@@ -67,9 +69,13 @@ export const documentService = {
 
 // AI Research Services
 export const aiService = {
-  chat: (workspaceId, query) => api.post('/ai/chat', { workspaceId, query }),
+  chat: (workspaceId, query, sessionId) => api.post('/ai/chat', { workspaceId, query, sessionId }),
+  getChatSessions: (workspaceId) => api.get(`/ai/chat/${workspaceId}/sessions`),
+  deleteChatSession: (workspaceId, sessionId) => api.delete(`/ai/chat/${workspaceId}/session/${sessionId}`),
+  clearChat: (workspaceId) => api.delete(`/ai/chat/${workspaceId}`),
   getGraph: (workspaceId) => api.get(`/ai/graph/${workspaceId}`),
   createNote: (data) => api.post('/ai/note', data),
+  autoExtractNotes: (workspaceId, tag) => api.post('/ai/auto-extract-notes', { workspaceId, tag }),
   deleteNote: (id) => api.delete(`/ai/note/${id}`),
 };
 

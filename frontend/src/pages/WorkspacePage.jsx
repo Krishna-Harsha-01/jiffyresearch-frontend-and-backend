@@ -13,7 +13,11 @@ import {
   ArrowLeft,
   BookOpen,
   CheckCircle,
-  Eye
+  Eye,
+  AlertTriangle,
+  Loader2,
+  ShieldCheck,
+  X
 } from 'lucide-react';
 import { workspaceService, documentService, aiService, reportService } from '../services/api';
 import KnowledgeGraph from '../components/KnowledgeGraph';
@@ -37,14 +41,21 @@ export default function WorkspacePage() {
   const [rawTitle, setRawTitle] = useState('');
   const [rawContent, setRawContent] = useState('');
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [showReplaceDocModal, setShowReplaceDocModal] = useState(false);
+  const [isDeletingAndReplacing, setIsDeletingAndReplacing] = useState(false);
 
-  const triggerFileInput = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+  const hasExistingDocs = Boolean(workspace?.documents && workspace.documents.length > 0);
+
+  const handleUploadBoxClick = (e) => {
+    if (uploading) return;
+    if (hasExistingDocs) {
+      e?.preventDefault?.();
+      setShowReplaceDocModal(true);
+    } else {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+      }
     }
   };
 
@@ -55,6 +66,8 @@ export default function WorkspacePage() {
 
   // Report Modal State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isAutoExtractingNotes, setIsAutoExtractingNotes] = useState(false);
+  const [presentationReport, setPresentationReport] = useState(null);
 
   const fetchWorkspace = async () => {
     try {
@@ -69,6 +82,21 @@ export default function WorkspacePage() {
       console.error('Failed to fetch workspace:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAutoExtractNotes = async (selectedCategory) => {
+    const categoryToExtract = typeof selectedCategory === 'string' ? selectedCategory : (noteTag || 'Key Finding');
+    setIsAutoExtractingNotes(true);
+    try {
+      const res = await aiService.autoExtractNotes(id, categoryToExtract);
+      if (res.data.success) {
+        await fetchWorkspace();
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Please upload research documents first to analyze and extract evidence notes.');
+    } finally {
+      setIsAutoExtractingNotes(false);
     }
   };
 
@@ -96,6 +124,36 @@ export default function WorkspacePage() {
       alert(err.response?.data?.error || 'Document processing failed.');
     } finally {
       setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleConfirmReplace = async () => {
+    setIsDeletingAndReplacing(true);
+    try {
+      if (workspace?.documents && workspace.documents.length > 0) {
+        for (const doc of workspace.documents) {
+          try {
+            await documentService.delete(doc.id);
+          } catch (err) {
+            console.error('Error deleting previous doc:', err);
+          }
+        }
+        setSelectedDoc(null);
+        await fetchWorkspace();
+      }
+      setShowReplaceDocModal(false);
+      // Synchronously open system file selector
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+      }
+    } catch (err) {
+      console.error('Failed to replace file:', err);
+    } finally {
+      setIsDeletingAndReplacing(false);
     }
   };
 
@@ -292,32 +350,71 @@ export default function WorkspacePage() {
 
               {!pasteMode ? (
                 <div className="space-y-3">
-                  <label
-                    htmlFor="workspace-file-upload-input"
-                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-[#0284c7] dark:hover:border-[#d2f235] rounded-xl cursor-pointer bg-zinc-50 dark:bg-[#09090b] transition-all hover:bg-zinc-100 dark:hover:bg-zinc-900 active:scale-[0.98]"
-                  >
-                    <Upload className="w-8 h-8 text-[#0284c7] dark:text-[#d2f235] mb-2 animate-bounce" />
-                    <span className="text-xs font-black text-zinc-900 dark:text-white">
-                      {uploading ? 'Processing & Extracting with AI...' : 'Tap or Click to Upload File'}
-                    </span>
-                    <span className="text-[10px] text-zinc-600 dark:text-zinc-400 mt-1 font-bold">PDF, TXT, MD, CSV, DOCX (Max 15MB)</span>
-                    <input
-                      id="workspace-file-upload-input"
-                      ref={fileInputRef}
-                      type="file"
-                      disabled={uploading}
-                      onChange={handleFileUpload}
-                      accept=".pdf,.txt,.md,.markdown,.csv,.json,.docx,application/pdf,text/plain"
-                      className="hidden"
-                    />
-                  </label>
+                  <input
+                    id="workspace-file-upload-input"
+                    ref={fileInputRef}
+                    type="file"
+                    disabled={uploading}
+                    onChange={handleFileUpload}
+                    accept=".pdf,.txt,.md,.markdown,.csv,.json,.docx,application/pdf,text/plain"
+                    className="hidden"
+                  />
 
-                  <button
-                    onClick={() => setPasteMode(true)}
-                    className="w-full py-2.5 text-xs text-zinc-900 dark:text-white font-extrabold border border-zinc-300 dark:border-zinc-700 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:border-[#0284c7] dark:hover:border-[#d2f235] transition-colors"
-                  >
-                    + Paste Raw Text Instead
-                  </button>
+                  {uploading ? (
+                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#0284c7]/50 dark:border-[#d2f235]/50 rounded-xl bg-[#0284c7]/5 dark:bg-[#d2f235]/5 transition-all animate-pulse">
+                      <div className="relative mb-3 flex items-center justify-center">
+                        <Loader2 className="w-10 h-10 text-[#0284c7] dark:text-[#d2f235] animate-spin" />
+                        <Sparkles className="w-4 h-4 text-[#0284c7] dark:text-[#d2f235] absolute -top-1 -right-1 animate-ping" />
+                      </div>
+                      <span className="text-xs font-black text-zinc-900 dark:text-white text-center">
+                        Analyzing & Ingesting Document with AI...
+                      </span>
+                      <span className="text-[10px] text-zinc-600 dark:text-zinc-400 mt-1 font-semibold text-center">
+                        Extracting knowledge graph, key findings & evidence nodes
+                      </span>
+                      {/* Animated Progress Bar */}
+                      <div className="w-full max-w-[200px] bg-zinc-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-3.5 border border-zinc-300 dark:border-zinc-700/60">
+                        <div className="h-full bg-gradient-to-r from-[#0284c7] to-cyan-400 dark:from-[#d2f235] dark:to-lime-200 rounded-full w-full animate-pulse" />
+                      </div>
+                    </div>
+                  ) : hasExistingDocs ? (
+                    <div
+                      onClick={() => setShowReplaceDocModal(true)}
+                      className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-[#0284c7] dark:hover:border-[#d2f235] rounded-xl cursor-pointer bg-zinc-50 dark:bg-[#09090b] transition-all hover:bg-zinc-100 dark:hover:bg-zinc-900 active:scale-[0.98]"
+                    >
+                      <Upload className="w-8 h-8 text-[#0284c7] dark:text-[#d2f235] mb-2 animate-bounce" />
+                      <span className="text-xs font-black text-zinc-900 dark:text-white">
+                        Tap or Click to Upload File
+                      </span>
+                      <span className="text-[10px] text-zinc-600 dark:text-zinc-400 mt-1 font-bold">PDF, TXT, MD, CSV, DOCX (Max 15MB)</span>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="workspace-file-upload-input"
+                      className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-[#0284c7] dark:hover:border-[#d2f235] rounded-xl cursor-pointer bg-zinc-50 dark:bg-[#09090b] transition-all hover:bg-zinc-100 dark:hover:bg-zinc-900 active:scale-[0.98]"
+                    >
+                      <Upload className="w-8 h-8 text-[#0284c7] dark:text-[#d2f235] mb-2 animate-bounce" />
+                      <span className="text-xs font-black text-zinc-900 dark:text-white">
+                        Tap or Click to Upload File
+                      </span>
+                      <span className="text-[10px] text-zinc-600 dark:text-zinc-400 mt-1 font-bold">PDF, TXT, MD, CSV, DOCX (Max 15MB)</span>
+                    </label>
+                  )}
+
+                  {!uploading && (
+                    <button
+                      onClick={() => {
+                        if (hasExistingDocs) {
+                          setShowReplaceDocModal(true);
+                        } else {
+                          setPasteMode(true);
+                        }
+                      }}
+                      className="w-full py-2.5 text-xs text-zinc-900 dark:text-white font-extrabold border border-zinc-300 dark:border-zinc-700 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:border-[#0284c7] dark:hover:border-[#d2f235] transition-colors cursor-pointer"
+                    >
+                      + Paste Raw Text Instead
+                    </button>
+                  )}
                 </div>
               ) : (
                 <form onSubmit={handleTextPasteUpload} className="space-y-3">
@@ -482,30 +579,34 @@ export default function WorkspacePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Note Input Form */}
-          <div className="glass-panel p-6 rounded-2xl border border-slate-800">
-            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <Plus className="w-4 h-4 text-indigo-400" />
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-zinc-200 dark:border-zinc-800/80 bg-white/70 dark:bg-[#09090b]/80 shadow-2xl">
+            <h3 className="text-sm font-black uppercase tracking-tight text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-[#0284c7] dark:text-[#d2f235]" />
               Add Research Note & Evidence Block
             </h3>
             <form onSubmit={handleCreateNote} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Title</label>
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Title
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g., Benchmark comparison anomaly"
                   value={noteTitle}
                   onChange={(e) => setNoteTitle(e.target.value)}
-                  className="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-800 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-50 dark:bg-[#18181b] text-zinc-900 dark:text-white text-xs rounded-xl px-3.5 py-2.5 border border-zinc-300 dark:border-zinc-800 focus:outline-none focus:border-[#0284c7] dark:focus:border-[#d2f235] transition-colors font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Tag Category</label>
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Tag Category
+                </label>
                 <select
                   value={noteTag}
                   onChange={(e) => setNoteTag(e.target.value)}
-                  className="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-800 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-50 dark:bg-[#18181b] text-zinc-900 dark:text-white text-xs rounded-xl px-3.5 py-2.5 border border-zinc-300 dark:border-zinc-800 focus:outline-none focus:border-[#0284c7] dark:focus:border-[#d2f235] transition-colors font-medium"
                 >
                   <option value="Key Finding">Key Finding</option>
                   <option value="Methodology Gap">Methodology Gap</option>
@@ -515,20 +616,22 @@ export default function WorkspacePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Note Details</label>
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Note Details
+                </label>
                 <textarea
                   rows={4}
                   required
                   placeholder="Record insights, citations, or synthetic observations..."
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
-                  className="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-800 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-50 dark:bg-[#18181b] text-zinc-900 dark:text-white text-xs rounded-xl px-3.5 py-2.5 border border-zinc-300 dark:border-zinc-800 focus:outline-none focus:border-[#0284c7] dark:focus:border-[#d2f235] transition-colors font-medium"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md shadow-indigo-600/20"
+                className="w-full py-3 rounded-full btn-recraft-lime text-black font-black text-xs shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 Save Note
               </button>
@@ -537,34 +640,103 @@ export default function WorkspacePage() {
 
           {/* Saved Notes Grid */}
           <div className="lg:col-span-2 space-y-4">
-            <h3 className="text-sm font-bold text-white mb-2">Saved Evidence Notes ({workspace.notes?.length || 0})</h3>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-tight text-zinc-900 dark:text-white">
+                  Saved Evidence Notes ({workspace.notes?.length || 0})
+                </h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
+                  Click any note card to open in Fullscreen Presentation Theme
+                </p>
+              </div>
+
+              {/* AI Auto-Extract Button & Quick Category Triggers */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleAutoExtractNotes(noteTag)}
+                  disabled={isAutoExtractingNotes || !workspace?.documents?.length}
+                  className="px-3.5 py-1.5 rounded-xl btn-recraft-lime text-black font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  title={`Extract 3-5 structured ${noteTag} evidence notes from documents`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-black" />
+                  <span>{isAutoExtractingNotes ? 'Analyzing with AI...' : `✨ AI Extract: ${noteTag}`}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Category Extraction Pills */}
+            <div className="flex items-center gap-2 flex-wrap pb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Quick Extract:</span>
+              {["Key Finding", "Methodology Gap", "Empirical Citation", "Hypothesis"].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  disabled={isAutoExtractingNotes || !workspace?.documents?.length}
+                  onClick={() => {
+                    setNoteTag(cat);
+                    handleAutoExtractNotes(cat);
+                  }}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer disabled:opacity-40 ${
+                    noteTag === cat
+                      ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-400 dark:border-zinc-600'
+                      : 'bg-zinc-100 dark:bg-zinc-900/60 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400'
+                  }`}
+                >
+                  + {cat}
+                </button>
+              ))}
+            </div>
             
             {workspace.notes?.length === 0 ? (
-              <div className="glass-panel p-8 text-center rounded-2xl border border-slate-800">
-                <StickyNote className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-xs text-slate-400">No notes created yet. Add notes to curate evidence for your report.</p>
+              <div className="glass-panel p-8 text-center rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-[#09090b]/60">
+                <StickyNote className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mx-auto mb-2" />
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                  No notes created yet. Add notes manually on the left or click <strong>✨ AI Extract</strong> to synthesize notes from your files.
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {workspace.notes.map((note) => (
-                  <div key={note.id} className="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
+                  <div 
+                    key={note.id} 
+                    onClick={() => setPresentationReport({
+                      title: note.title,
+                      report_type: note.tags?.[0] || 'Evidence Note',
+                      content: note.content,
+                      created_at: note.created_at
+                    })}
+                    className="glass-card p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0d12] flex flex-col justify-between hover:border-[#0284c7] dark:hover:border-[#d2f235] transition-all shadow-sm cursor-pointer group hover:shadow-lg relative"
+                    title="Click to open in Luxury Brown Presentation View"
+                  >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#0284c7]/10 dark:bg-[#d2f235]/15 text-[#0284c7] dark:text-[#d2f235] border border-[#0284c7]/20 dark:border-[#d2f235]/30">
                           {note.tags?.[0] || 'Note'}
                         </span>
-                        <button
-                          onClick={() => handleDeleteNote(note.id)}
-                          className="text-slate-500 hover:text-red-400 transition-colors text-xs"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity font-bold flex items-center gap-0.5 mr-1">
+                            <Eye className="w-3 h-3" /> View Slide
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNote(note.id);
+                            }}
+                            className="text-zinc-400 hover:text-rose-500 transition-colors text-xs p-1 cursor-pointer"
+                            title="Delete note"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <h4 className="font-bold text-sm text-white mb-1">{note.title}</h4>
-                      <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                      <h4 className="font-bold text-sm text-zinc-900 dark:text-white mb-1 group-hover:text-[#0284c7] dark:group-hover:text-[#d2f235] transition-colors">{note.title}</h4>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap font-medium">{note.content}</p>
                     </div>
-                    <div className="text-[10px] text-slate-500 font-mono mt-4 pt-2 border-t border-slate-800">
-                      {new Date(note.created_at).toLocaleDateString()}
+                    <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-4 pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
+                      <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                      <span className="text-[#0284c7] dark:text-[#d2f235] font-bold text-[10px]">Presentation Ready →</span>
                     </div>
                   </div>
                 ))}
@@ -578,24 +750,24 @@ export default function WorkspacePage() {
       {/* TAB 5: Synthesis Reports */}
       {activeTab === 'reports' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="text-lg font-bold text-white">Synthesized Research Reports</h3>
-              <p className="text-xs text-slate-400">Generated Markdown reports and literature review matrices</p>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Synthesized Research Reports</h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Generated Markdown reports and luxury presentation review matrices</p>
             </div>
             <button
               onClick={() => setIsReportModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-2"
+              className="px-5 py-2.5 rounded-full btn-recraft-lime text-black font-black text-xs flex items-center gap-2 shadow-lg cursor-pointer"
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="w-4 h-4 text-black" />
               Generate New Synthesis Report
             </button>
           </div>
 
           {workspace.reports?.length === 0 ? (
-            <div className="glass-panel p-12 text-center rounded-2xl border border-slate-800">
-              <FileSpreadsheet className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No synthesis reports generated yet.</p>
+            <div className="glass-panel p-12 text-center rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-[#09090b]/60">
+              <FileSpreadsheet className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto mb-2" />
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">No synthesis reports generated yet. Click above to generate publication-grade reports.</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -603,8 +775,16 @@ export default function WorkspacePage() {
                 <div key={report.id} className="relative group">
                   <div className="absolute top-8 right-8 z-20 flex items-center gap-2">
                     <button
+                      onClick={() => setPresentationReport(report)}
+                      className="px-3.5 py-1.5 rounded-xl bg-white/15 hover:bg-white text-white hover:text-[#2b040d] transition-all border border-white/20 shadow-md font-bold text-xs flex items-center gap-1.5 cursor-pointer backdrop-blur-sm"
+                      title="Open Fullscreen Presentation View in Luxury Brown Theme"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Presentation Slide View</span>
+                    </button>
+                    <button
                       onClick={() => handleDeleteReport(report.id)}
-                      className="p-2 rounded-xl bg-white/10 hover:bg-rose-600 text-white transition-colors border border-white/20 shadow-md"
+                      className="p-2 rounded-xl bg-white/10 hover:bg-rose-600 text-white transition-colors border border-white/20 shadow-md cursor-pointer"
                       title="Delete Synthesis Report"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -629,6 +809,127 @@ export default function WorkspacePage() {
         </div>
       )}
 
+      {/* Luxury Brown Presentation Slide Modal (Matching User Design) */}
+      {presentationReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 lg:p-8 bg-black/90 backdrop-blur-2xl animate-in fade-in overflow-y-auto">
+          <div className="bg-gradient-to-br from-[#1c0308] via-[#350611] to-[#120104] text-white w-full max-w-6xl rounded-[2.5rem] p-6 sm:p-10 lg:p-12 border border-[#520c1c] shadow-2xl relative overflow-hidden my-auto">
+            
+            {/* Background Decorative Ambient Orbs */}
+            <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#8a1431]/20 blur-[100px] pointer-events-none" />
+            <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-[#610a1f]/30 blur-[120px] pointer-events-none" />
+            <div className="absolute top-8 left-1/3 w-16 h-16 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm pointer-events-none hidden sm:block" />
+            <div className="absolute bottom-16 right-1/3 w-12 h-12 rounded-full bg-white/5 border border-white/10 pointer-events-none hidden sm:block" />
+
+            {/* Top Close Button & Brand Header */}
+            <div className="flex items-center justify-between gap-4 mb-6 relative z-20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1a1c23] via-[#090a0f] to-[#050507] border border-[#c58b41]/60 shadow-md flex items-center justify-center shrink-0">
+                  <span className="font-['Cinzel'] font-black text-sm text-transparent bg-clip-text bg-gradient-to-b from-[#f3e0aa] via-[#d4af37] to-[#a67c1e]">
+                    J
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-bold tracking-widest text-rose-200/90 uppercase">
+                  JIFFY RESEARCH • PRESENTATION MATRIX
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPresentationReport(null)}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white text-white hover:text-black transition-all border border-white/20 cursor-pointer shadow-lg"
+                title="Close Presentation View"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Grid: Left Slide Content + Right Architectural & Research Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 items-stretch">
+              
+              {/* Left Column: Big Hello! + White Slide Content Card */}
+              <div className="lg:col-span-8 flex flex-col justify-between">
+                <div>
+                  <h1 className="text-4xl sm:text-6xl font-black text-white tracking-tight uppercase font-sans mb-5">
+                    Hello!
+                  </h1>
+
+                  {/* Rounded White Slide Card */}
+                  <div className="bg-white text-[#2b040d] rounded-[2rem] p-6 sm:p-8 shadow-2xl border border-[#4a0d1a] max-h-[50vh] overflow-y-auto">
+                    <div className="mb-4">
+                      <span className="inline-block px-3.5 py-1 rounded-full bg-[#fce8eb] text-[#3b0914] border border-[#f5c2ca] text-[10px] font-black uppercase tracking-wider mb-2.5">
+                        {(presentationReport?.report_type || 'EVIDENCE NOTE').replace(/_/g, ' ')}
+                      </span>
+                      <h2 className="text-lg sm:text-2xl font-black text-[#2b040d] tracking-tight uppercase leading-snug">
+                        {presentationReport?.title || 'Research Note'}
+                      </h2>
+                    </div>
+
+                    <div className="salford-template-body text-[#2b040d] text-xs sm:text-sm leading-relaxed font-medium prose prose-xs sm:prose-sm max-w-none">
+                      <ReactMarkdown>{presentationReport?.content || ''}</ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Presentation Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                  <div className="bg-white text-[#2b040d] font-black px-5 py-2.5 rounded-full shadow-lg text-xs flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#3b0914]" />
+                    <span>Presented by: Jiffy Research AI</span>
+                  </div>
+
+                  <div className="text-xs font-mono font-bold text-rose-100/90 px-4 py-2 rounded-full bg-white/10 border border-white/20">
+                    {presentationReport?.created_at
+                      ? new Date(presentationReport.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'October 2026'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: 2 Sleek Vertical Visual Cards (Matching Screenshot) */}
+              <div className="lg:col-span-4 hidden lg:grid grid-cols-2 gap-3.5">
+                {/* Vertical Card 1 */}
+                <div className="rounded-[2rem] overflow-hidden border border-white/15 bg-[#25050d] shadow-xl relative flex flex-col justify-end p-4 group">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent z-10" />
+                  <img 
+                    src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80" 
+                    alt="Research Architecture" 
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
+                  />
+                  <div className="relative z-20">
+                    <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-white/20 text-white backdrop-blur-md inline-block mb-1">
+                      STRUCTURE
+                    </span>
+                    <p className="text-xs font-black text-white uppercase leading-tight">
+                      Evidence Synthesis
+                    </p>
+                  </div>
+                </div>
+
+                {/* Vertical Card 2 */}
+                <div className="rounded-[2rem] overflow-hidden border border-white/15 bg-[#25050d] shadow-xl relative flex flex-col justify-end p-4 group">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent z-10" />
+                  <img 
+                    src="https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80" 
+                    alt="Strategic Analysis" 
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
+                  />
+                  <div className="relative z-20">
+                    <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-white/20 text-white backdrop-blur-md inline-block mb-1">
+                      CITATIONS
+                    </span>
+                    <p className="text-xs font-black text-white uppercase leading-tight">
+                      100% Grounded
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Report Generator Modal */}
       <ReportGeneratorModal
         workspaceId={id}
@@ -639,6 +940,43 @@ export default function WorkspacePage() {
           setActiveTab('reports');
         }}
       />
+
+      {/* Replace Document Confirmation Modal */}
+      {showReplaceDocModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#09090b] text-white w-full max-w-md rounded-3xl p-6 sm:p-7 border border-zinc-800 shadow-2xl relative">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-4 mx-auto shadow-inner">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base sm:text-lg font-black text-white text-center">
+              Are you sure you want delete the present file uploaded?
+            </h3>
+            <p className="text-xs text-zinc-400 text-center mt-2 leading-relaxed">
+              A research document is currently uploaded in this workspace. Continuing will delete the present file and open the file chooser so you can select a new file.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowReplaceDocModal(false)}
+                disabled={isDeletingAndReplacing}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAndReplacing}
+                onClick={handleConfirmReplace}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingAndReplacing ? 'Deleting...' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

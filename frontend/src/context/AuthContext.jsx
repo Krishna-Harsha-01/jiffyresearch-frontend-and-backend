@@ -31,8 +31,17 @@ export const AuthProvider = ({ children }) => {
 
   const clearAuth = () => {
     localStorage.removeItem('nexus_token');
+    localStorage.removeItem('nexus_user');
+    sessionStorage.clear();
     setToken(null);
     setUser(null);
+    try {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.disableAutoSelect();
+      }
+    } catch (e) {
+      console.warn('GSI autoSelect disable note:', e);
+    }
   };
 
   const login = async ({ email, password, captchaToken, captchaAnswer, mfaCode }) => {
@@ -47,14 +56,28 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
+  const handleAuthSuccess = (userData, authToken) => {
+    if (authToken) {
+      localStorage.setItem('nexus_token', authToken);
+      setToken(authToken);
+    }
+    if (userData) {
+      setUser(userData);
+    }
+  };
+
+  const loginWithGoogle = async (googlePayload) => {
+    const res = await authService.googleAuth(googlePayload);
+    if (res.data.success && res.data.user) {
+      handleAuthSuccess(res.data.user, res.data.token);
+    }
+    return res.data;
+  };
+
   const register = async (name, email, password) => {
     const res = await authService.register({ name, email, password });
     if (res.data.success && res.data.user) {
-      if (res.data.token) {
-        localStorage.setItem('nexus_token', res.data.token);
-        setToken(res.data.token);
-      }
-      setUser(res.data.user);
+      handleAuthSuccess(res.data.user, res.data.token);
     }
     return res.data;
   };
@@ -63,7 +86,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await authService.logout();
     } catch (e) {
-      // Ignore logout errors
+      console.warn('Backend logout note:', e);
     } finally {
       clearAuth();
     }
@@ -84,8 +107,10 @@ export const AuthProvider = ({ children }) => {
       loading,
       login,
       register,
+      loginWithGoogle,
       logout,
       deleteAccount,
+      handleAuthSuccess,
       refreshUser: fetchUser,
       isSecurityModalOpen,
       setIsSecurityModalOpen

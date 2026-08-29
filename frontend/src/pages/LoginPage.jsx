@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff, ShieldCheck, RefreshCw, KeyRound } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff, ShieldCheck, RefreshCw, KeyRound, CheckCircle2 } from 'lucide-react';
 import { authService } from '../services/api';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState(location.state?.registeredEmail || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(location.state?.successMessage || '');
 
   // Security challenge states
   const [requiresCaptcha, setRequiresCaptcha] = useState(false);
@@ -21,7 +25,15 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (location.state?.registeredEmail) {
+      setEmail(location.state.registeredEmail);
+    }
+    if (location.state?.successMessage) {
+      setSuccessMsg(location.state.successMessage);
+    }
+  }, [location.state]);
 
   const loadNewCaptcha = async () => {
     try {
@@ -38,6 +50,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
@@ -105,8 +118,15 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {successMsg && (
+          <div className="mb-6 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center gap-2 font-medium">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
         {error && (
-          <div className="mb-6 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 font-medium">
+          <div className="mb-6 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-center gap-2 font-medium">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
@@ -126,7 +146,7 @@ export default function LoginPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="researcher@university.edu"
+                    placeholder="alex.vance@gmail.com"
                     className="w-full bg-[#18181b] text-white text-xs rounded-xl pl-11 pr-4 py-3 border border-zinc-800 focus:outline-none focus:border-[#d2f235] transition-colors font-medium"
                   />
                 </div>
@@ -245,7 +265,7 @@ export default function LoginPage() {
         <p className="text-center text-xs text-zinc-400 mt-6 font-medium">
           Don't have a research account?{' '}
           <Link to="/register" className="text-[#d2f235] hover:underline font-extrabold">
-            Create Account
+            Sign Up with Google
           </Link>
         </p>
 
