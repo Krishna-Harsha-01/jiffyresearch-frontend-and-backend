@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
   };
 
   const [googleVerifiedUser, setGoogleVerifiedUser] = useState(null);
-  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '747543578312-rhkq2es0af937l4vj7okburrcpto9k1h.apps.googleusercontent.com';
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '208857379966-8pcekt5qt94bhnnucs4f52qctr7eldja.apps.googleusercontent.com';
 
   const handleGoogleCredentialResponse = (response) => {
     if (!response?.credential) return;
